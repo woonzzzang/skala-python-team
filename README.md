@@ -205,3 +205,10 @@ python src/main.py
 - 과제 제출 기준상 결과물을 함께 제출해야 한다면 `.gitignore`에서 해당 줄을 지우고
   같이 커밋해도 됩니다. 일반적인 GitHub 공개 프로젝트라면 대용량 원본 데이터는 제외하고
   README에 다운로드 URL과 받는 방법만 적어두는 방식을 권장합니다.
+
+  ---
+
+## 저작권
+
+© 2026 SKALA Python Team. All rights reserved.  
+본 프로젝트의 모든 권리는 프로젝트 작성자에게 있습니다.
