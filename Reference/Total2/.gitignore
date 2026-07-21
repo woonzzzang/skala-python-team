@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+
+# 원본/정제 데이터는 용량이 크고 URL로 재현 가능하므로 GitHub에는 보통 올리지 않는다.
+# 과제 제출 기준상 필요하다면 아래 두 줄은 지우고 데이터를 함께 커밋해도 된다.
+data/raw/
+data/processed/
+
+# 학습된 모델 파일도 코드 실행으로 재생성 가능하므로 기본적으로 제외한다.
+output/models/*.pkl
