@@ -1,1 +1,0 @@
-# skala-python-team
