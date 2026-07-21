@@ -1,0 +1,192 @@
+{
+  "loader": {
+    "pandas_shape": [
+      32561,
+      15
+    ],
+    "polars_shape": [
+      32561,
+      15
+    ],
+    "same_shape": true,
+    "pandas_missing": {
+      "age": 0,
+      "workclass": 1836,
+      "fnlwgt": 0,
+      "education": 0,
+      "education-num": 0,
+      "marital-status": 0,
+      "occupation": 1843,
+      "relationship": 0,
+      "race": 0,
+      "sex": 0,
+      "capital-gain": 0,
+      "capital-loss": 0,
+      "hours-per-week": 0,
+      "native-country": 583,
+      "income": 0
+    },
+    "polars_missing": {
+      "age": 0,
+      "workclass": 1836,
+      "fnlwgt": 0,
+      "education": 0,
+      "education-num": 0,
+      "marital-status": 0,
+      "occupation": 1843,
+      "relationship": 0,
+      "race": 0,
+      "sex": 0,
+      "capital-gain": 0,
+      "capital-loss": 0,
+      "hours-per-week": 0,
+      "native-country": 583,
+      "income": 0
+    }
+  },
+  "cleaning": {
+    "before_rows": 32561,
+    "duplicate_before": 24,
+    "after_rows": 32537,
+    "removed_duplicates": 24,
+    "missing_before": {
+      "age": 0,
+      "workclass": 1836,
+      "fnlwgt": 0,
+      "education": 0,
+      "education-num": 0,
+      "marital-status": 0,
+      "occupation": 1843,
+      "relationship": 0,
+      "race": 0,
+      "sex": 0,
+      "capital-gain": 0,
+      "capital-loss": 0,
+      "hours-per-week": 0,
+      "native-country": 583,
+      "income": 0
+    },
+    "missing_after": {
+      "age": 0,
+      "workclass": 0,
+      "fnlwgt": 0,
+      "education": 0,
+      "education-num": 0,
+      "marital-status": 0,
+      "occupation": 0,
+      "relationship": 0,
+      "race": 0,
+      "sex": 0,
+      "capital-gain": 0,
+      "capital-loss": 0,
+      "hours-per-week": 0,
+      "native-country": 0,
+      "income": 0,
+      "income_label": 0
+    },
+    "categorical_missing_filled": [
+      "workclass",
+      "occupation",
+      "native-country"
+    ],
+    "outlier_treatment": {
+      "age": {
+        "q1": 28.0,
+        "q3": 48.0,
+        "iqr": 20.0,
+        "lower": -2.0,
+        "upper": 78.0,
+        "outlier_count": 142,
+        "method": "IQR capping"
+      },
+      "fnlwgt": {
+        "q1": 117827.0,
+        "q3": 236993.0,
+        "iqr": 119166.0,
+        "lower": -60922.0,
+        "upper": 415742.0,
+        "outlier_count": 993,
+        "method": "IQR capping"
+      },
+      "hours-per-week": {
+        "q1": 40.0,
+        "q3": 45.0,
+        "iqr": 5.0,
+        "lower": 32.5,
+        "upper": 52.5,
+        "outlier_count": 9002,
+        "method": "IQR capping"
+      }
+    }
+  },
+  "numeric_describe": {
+    "age": {
+      "count": 32537.0,
+      "mean": 38.56,
+      "std": 13.55,
+      "min": 17.0,
+      "25%": 28.0,
+      "50%": 37.0,
+      "75%": 48.0,
+      "max": 78.0
+    },
+    "fnlwgt": {
+      "count": 32537.0,
+      "mean": 186824.96,
+      "std": 95118.12,
+      "min": 12285.0,
+      "25%": 117827.0,
+      "50%": 178356.0,
+      "75%": 236993.0,
+      "max": 415742.0
+    },
+    "education-num": {
+      "count": 32537.0,
+      "mean": 10.08,
+      "std": 2.57,
+      "min": 1.0,
+      "25%": 9.0,
+      "50%": 10.0,
+      "75%": 12.0,
+      "max": 16.0
+    },
+    "capital-gain": {
+      "count": 32537.0,
+      "mean": 1078.44,
+      "std": 7387.96,
+      "min": 0.0,
+      "25%": 0.0,
+      "50%": 0.0,
+      "75%": 0.0,
+      "max": 99999.0
+    },
+    "capital-loss": {
+      "count": 32537.0,
+      "mean": 87.37,
+      "std": 403.1,
+      "min": 0.0,
+      "25%": 0.0,
+      "50%": 0.0,
+      "75%": 0.0,
+      "max": 4356.0
+    },
+    "hours-per-week": {
+      "count": 32537.0,
+      "mean": 41.2,
+      "std": 6.19,
+      "min": 32.5,
+      "25%": 40.0,
+      "50%": 40.0,
+      "75%": 45.0,
+      "max": 52.5
+    }
+  },
+  "income_counts": {
+    "<=50K": 24698,
+    ">50K": 7839
+  },
+  "income_rate_percent": {
+    "<=50K": 75.91,
+    ">50K": 24.09
+  }
+}
