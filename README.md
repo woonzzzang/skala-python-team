@@ -1,9 +1,9 @@
 # skala-python-team
 구성원 소개
-왕시훈 : https://github.com/sihunwang-skala
-한형준 : github.com/hhj2000
-장서연 : https://github.com/seoyeonskala
-정다은 : 
+- 왕시훈 : https://github.com/sihunwang-skala
+- 한형준 : https://github.com/hhj2000
+- 장서연 : https://github.com/seoyeonskala
+- 정다운 : https://github.com/woonzzzang
 
 # Adult Census Income End-to-End Analysis
 
