@@ -1,4 +1,4 @@
-# skala-python-team
+# SKALA-PYTHON-TEAM
 ## 구성원 소개
 - 왕시훈 : https://github.com/sihunwang-skala
 - 한형준 : https://github.com/hhj2000
