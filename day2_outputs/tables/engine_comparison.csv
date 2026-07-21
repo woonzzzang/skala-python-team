@@ -1,0 +1,3 @@
+engine,load_median_seconds,memory_mb,raw_rows,raw_columns,missing_total,duplicate_rows,deduplicated_rows,income_<=50K,income_>50K
+Pandas,0.04370316599670332,19.907095909118652,32561,15,4262,24,32537,24698,7839
+Polars,0.013930166001955513,3.9485397338867188,32561,15,4262,24,32537,24698,7839

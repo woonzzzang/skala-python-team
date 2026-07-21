@@ -1,0 +1,9 @@
+variable,unique_count,mode,mode_count,missing_count,missing_rate,rare_category_count,rare_threshold
+workclass,8,Private,22673,1836,0.05642806650889756,2,100
+education,16,HS-grad,10494,0,0.0,1,100
+marital-status,7,Married-civ-spouse,14970,0,0.0,1,100
+occupation,14,Prof-specialty,4136,1843,0.05664320619602299,1,100
+relationship,6,Husband,13187,0,0.0,0,100
+race,5,White,27795,0,0.0,0,100
+sex,2,Male,21775,0,0.0,0,100
+native-country,41,United-States,29153,582,0.017887328272428313,33,100
