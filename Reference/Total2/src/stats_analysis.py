@@ -41,6 +41,13 @@ def perform_correlation_analysis(
     print("\n[상관계수 절대값 기준 상위 3개 변수 조합]")
     print(top_pairs.to_string(index=False))
 
+    # Spearman은 순위 기반이라 이상치·비선형 관계에 덜 민감함 - Pearson과 비교용으로 함께 계산
+    spearman_matrix = df[numeric_columns].corr(method="spearman")
+    print("\n[숫자형 컬럼 상관관계 (Spearman, 비교용)]")
+    print(spearman_matrix.round(2))
+    max_gap = (correlation_matrix - spearman_matrix).abs().to_numpy()
+    print(f"Pearson-Spearman 최대 차이(절대값): {max_gap.max():.3f}")
+
     # income을 0/1로 임시 인코딩한 참고용 상관관계 (공식 분석이 아닌 단순 선형 상관 참고값)
     income_encoded = (df[income_column] == ">50K").astype(int)
     income_correlation = df[numeric_columns].apply(lambda col: col.corr(income_encoded)).round(3)
@@ -66,8 +73,8 @@ def perform_t_test(
     low_income_group = df.loc[df[group_column] == "<=50K", value_column].dropna()
 
     print(f"\n[t-test] {group_column} 그룹별 {value_column} 평균 비교")
-    print("H0: 두 그룹의 평균 hours-per-week에는 차이가 없다.")
-    print("H1: 두 그룹의 평균 hours-per-week에는 차이가 있다.")
+    print(f"H0: 두 그룹의 평균 {value_column}에는 차이가 없다.")
+    print(f"H1: 두 그룹의 평균 {value_column}에는 차이가 있다.")
     print(
         f">50K  : n={len(high_income_group)}, 평균={high_income_group.mean():.2f}, "
         f"표준편차={high_income_group.std():.2f}"
@@ -91,7 +98,7 @@ def perform_t_test(
     print(f"평균 차이: {mean_difference:.2f}, Cohen's d: {cohens_d:.3f}")
 
     if is_significant:
-        print(f"해석: p < {alpha} 이므로 귀무가설을 기각한다. 두 그룹의 평균 주당 근무시간은 통계적으로 유의하게 다르다.")
+        print(f"해석: p < {alpha} 이므로 귀무가설을 기각한다. 두 그룹의 평균 {value_column}은(는) 통계적으로 유의하게 다르다.")
     else:
         print(f"해석: p >= {alpha} 이므로 귀무가설을 기각할 충분한 근거가 없다. 통계적으로 유의한 차이를 확인하지 못했다.")
 
@@ -114,6 +121,15 @@ def perform_t_test(
     }
 
 
+def cramers_v(chi2_statistic: float, crosstab: pd.DataFrame) -> float:
+    """카이제곱 통계량으로 Cramér's V(연관성 크기, 0~1)를 계산한다."""
+    n = crosstab.to_numpy().sum()
+    min_dim = min(crosstab.shape[0] - 1, crosstab.shape[1] - 1)
+    if n == 0 or min_dim == 0:
+        return 0.0
+    return float(np.sqrt(chi2_statistic / (n * min_dim)))
+
+
 def perform_chi_square_test(df: pd.DataFrame, row_column: str, col_column: str, top_n: int = 10) -> dict:
     """
     두 범주형 컬럼의 독립성을 카이제곱 검정으로 확인한다(t-test 외 선택적 추가 분석).
@@ -127,13 +143,14 @@ def perform_chi_square_test(df: pd.DataFrame, row_column: str, col_column: str, 
 
     crosstab = pd.crosstab(row_series, working_df[col_column])
     chi2_statistic, p_value, degrees_of_freedom, expected_frequencies = stats.chi2_contingency(crosstab)
+    cramers_v_value = cramers_v(chi2_statistic, crosstab)
 
     small_expected_cell_count = int((expected_frequencies < 5).sum())
     alpha = 0.05
     is_significant = p_value < alpha
 
     print(f"\n[카이제곱 독립성 검정] {row_column} x {col_column}")
-    print(f"chi2={chi2_statistic:.4f}, dof={degrees_of_freedom}, p-value={p_value:.6f}")
+    print(f"chi2={chi2_statistic:.4f}, dof={degrees_of_freedom}, p-value={p_value:.6f}, Cramér's V={cramers_v_value:.3f}")
     print(f"기대빈도 5 미만 셀 개수: {small_expected_cell_count} / 전체 {expected_frequencies.size}")
     if small_expected_cell_count > 0:
         print("주의: 기대빈도가 낮은 셀이 있어 검정 결과의 신뢰도가 다소 낮아질 수 있다.")
@@ -149,5 +166,6 @@ def perform_chi_square_test(df: pd.DataFrame, row_column: str, col_column: str, 
         "chi2": float(chi2_statistic),
         "dof": int(degrees_of_freedom),
         "p_value": float(p_value),
+        "cramers_v": cramers_v_value,
         "is_significant": bool(is_significant),
     }

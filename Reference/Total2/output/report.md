@@ -21,6 +21,13 @@
 - 단, 통계 검정처럼 특정 컬럼만 필요한 분석에서는 해당 컬럼의 결측 행만 일시적으로 제거
 - 전체 데이터에 미리 대체값을 채우면 train/test 분리 후에도 test 정보가 섞여 데이터 누수가 생길 수 있으므로, 실제 대체는 sklearn Pipeline 내부에서 train 데이터 기준으로만 수행한다.
 
+### Pandas vs Polars 로드 성능 (1회 측정, 절대적 우열 판단 근거 아님)
+- 로드 시간: Pandas 0.0313초 / Polars 0.0059초
+- 메모리 사용량: Pandas 6.20MB / Polars 3.95MB
+- 측정 방법: 같은 프로세스 안에서 같은 원본 파일을 각각 새로 읽어 `time.perf_counter()`로 걸린 시간을,
+  Pandas는 `memory_usage(deep=True)`, Polars는 `estimated_size()`로 메모리 사용량을 측정했다.
+  OS 파일 캐시 영향이 있을 수 있어 1회 측정값만으로 두 라이브러리의 절대적 우열을 판단하지 않는다.
+
 ## 3. EDA 주요 결과
 
 ### income 분포
@@ -30,14 +37,14 @@
   모델 평가 시 Accuracy 외에 Precision/Recall/F1-score를 함께 봐야 한다.
 
 ### 주요 수치형 변수 기술통계
-| column         |   count |      mean |       std |   min |     Q1 |   median |     Q3 |            max |   missing |   skewness |   kurtosis |
-|:---------------|--------:|----------:|----------:|------:|-------:|---------:|-------:|---------------:|----------:|-----------:|-----------:|
-| age            |   32537 |     38.59 |     13.64 |    17 |     28 |       37 |     48 |    90          |         0 |       0.56 |      -0.17 |
-| fnlwgt         |   32537 | 189781    | 105556    | 12285 | 117827 |   178356 | 236993 |     1.4847e+06 |         0 |       1.45 |       6.22 |
-| education-num  |   32537 |     10.08 |      2.57 |     1 |      9 |       10 |     12 |    16          |         0 |      -0.31 |       0.62 |
-| capital-gain   |   32537 |   1078.44 |   7387.96 |     0 |      0 |        0 |      0 | 99999          |         0 |      11.95 |     154.68 |
-| capital-loss   |   32537 |     87.37 |    403.1  |     0 |      0 |        0 |      0 |  4356          |         0 |       4.59 |      20.36 |
-| hours-per-week |   32537 |     40.44 |     12.35 |     1 |     40 |       40 |     45 |    99          |         0 |       0.23 |       2.92 |
+| column         |   count |      mean |       std |   min |     Q1 |   median |     Q3 |            max |    IQR |   missing |   missing_pct |   unique |   skewness |   kurtosis |   outlier_candidates |
+|:---------------|--------:|----------:|----------:|------:|-------:|---------:|-------:|---------------:|-------:|----------:|--------------:|---------:|-----------:|-----------:|---------------------:|
+| age            |   32537 |     38.59 |     13.64 |    17 |     28 |       37 |     48 |    90          |     20 |         0 |             0 |       73 |       0.56 |      -0.17 |                  142 |
+| fnlwgt         |   32537 | 189781    | 105556    | 12285 | 117827 |   178356 | 236993 |     1.4847e+06 | 119166 |         0 |             0 |    21648 |       1.45 |       6.22 |                  993 |
+| education-num  |   32537 |     10.08 |      2.57 |     1 |      9 |       10 |     12 |    16          |      3 |         0 |             0 |       16 |      -0.31 |       0.62 |                 1193 |
+| capital-gain   |   32537 |   1078.44 |   7387.96 |     0 |      0 |        0 |      0 | 99999          |      0 |         0 |             0 |      119 |      11.95 |     154.68 |                 2712 |
+| capital-loss   |   32537 |     87.37 |    403.1  |     0 |      0 |        0 |      0 |  4356          |      0 |         0 |             0 |       92 |       4.59 |      20.36 |                 1519 |
+| hours-per-week |   32537 |     40.44 |     12.35 |     1 |     40 |       40 |     45 |    99          |      5 |         0 |             0 |       94 |       0.23 |       2.92 |                 9002 |
 
 - capital-gain과 capital-loss는 0값 비율이 매우 높고 오른쪽 꼬리가 긴 분포라서,
   큰 값을 단순 오류로 보고 삭제하지 않았다(시각화에서는 log1p 변환으로 확인).
@@ -56,35 +63,52 @@
 - education과 education-num은 같은 학력 정보를 다른 형태로 표현하므로 서로 상관이 높을 수 있고,
   모델 feature로 함께 쓸 때 정보 중복에 유의해야 한다.
 
-### t-test: income 그룹별 hours-per-week
-- H0: 두 income 그룹의 평균 hours-per-week에는 차이가 없다.
-- H1: 두 income 그룹의 평균 hours-per-week에는 차이가 있다.
-- >50K 그룹: n=7839, 평균=45.47
-- <=50K 그룹: n=24698, 평균=38.84
-- t 통계량: 45.0950
-- p-value: 0.000000
-- Cohen's d: 0.567
-- 결론: 귀무가설을 기각하며, 두 income 그룹의 평균 주당 근무시간에 통계적으로 유의한 차이가 있다.
+### t-test: income 그룹별 평균 차이 (hours-per-week / age / education-num)
+- H0: 두 income 그룹의 평균에는 차이가 없다. H1: 차이가 있다. (Welch t-test, 양측검정, alpha=0.05)
+- **hours-per-week**
+  - >50K: n=7839, 평균=45.47 / <=50K: n=24698, 평균=38.84 / 평균 차이=6.63, t=45.0950, p-value=0.000000, Cohen's d=0.567 -> 귀무가설을 기각하며, 두 income 그룹의 평균에 통계적으로 유의한 차이가 있다.
+- **age**
+  - >50K: n=7839, 평균=44.25 / <=50K: n=24698, 평균=36.79 / 평균 차이=7.46, t=50.2350, p-value=0.000000, Cohen's d=0.602 -> 귀무가설을 기각하며, 두 income 그룹의 평균에 통계적으로 유의한 차이가 있다.
+- **education-num**
+  - >50K: n=7839, 평균=11.61 / <=50K: n=24698, 평균=9.60 / 평균 차이=2.02, t=64.8761, p-value=0.000000, Cohen's d=0.837 -> 귀무가설을 기각하며, 두 income 그룹의 평균에 통계적으로 유의한 차이가 있다.
 - 주의: 표본 수가 크면 작은 차이도 매우 작은 p-value로 나타날 수 있어, 통계적 유의성과
   실질적 효과 크기(Cohen's d)를 함께 고려해야 한다.
 
-### 카이제곱 독립성 검정 (선택적 추가 분석)
-  - education x income: chi2=3593.21, p-value=0.0000, 유의함
-  - occupation x income: chi2=3672.96, p-value=0.0000, 유의함
-  - sex x income: chi2=1516.54, p-value=0.0000, 유의함
+### 카이제곱 독립성 검정 (education/occupation/workclass/sex x income)
+  - education x income: chi2=3593.21, dof=10, p-value=0.0000, Cramér's V=0.332, 유의함
+  - occupation x income: chi2=3672.96, dof=10, p-value=0.0000, Cramér's V=0.346, 유의함
+  - workclass x income: chi2=826.44, dof=7, p-value=0.0000, Cramér's V=0.164, 유의함
+  - sex x income: chi2=1516.54, dof=1, p-value=0.0000, Cramér's V=0.216, 유의함
 
 ## 5. 모델링
-- 사용한 feature: 수치형 ['age', 'fnlwgt', 'education-num', 'capital-gain', 'capital-loss', 'hours-per-week'], 범주형 ['workclass', 'education', 'marital-status', 'occupation', 'relationship', 'race', 'sex', 'native-country']
-- target: income (feature에서는 제외하여 데이터 누수를 방지)
+- 사용한 feature: 수치형 ['age', 'education-num', 'capital-gain', 'capital-loss', 'hours-per-week'], 범주형 ['workclass', 'marital-status', 'occupation', 'relationship', 'race', 'sex', 'native-country']
+- 모델 feature에서 제외한 컬럼: ['fnlwgt', 'education']
+  (fnlwgt는 개인 속성이 아닌 표본가중치라서 제외, education은 education-num과 정보가 중복되어 제외)
+- target: income (feature에서는 제외해 데이터 누수 방지, y는 <=50K=0, >50K=1로 매핑해 학습/평가)
 - 전처리: SimpleImputer + StandardScaler(수치형), SimpleImputer + OneHotEncoder(범주형)를
   ColumnTransformer로 연결하고, sklearn Pipeline 내부에서 train 데이터로만 학습
-- 사용 모델: LogisticRegression(class_weight="balanced")
 - train/test 분할: test_size=0.2, stratify=income, random_state=42
-- Accuracy : 0.8090
-- Precision: 0.5684
-- Recall   : 0.8610
-- F1-score : 0.6848
-- ROC-AUC  : 0.9099
+
+### 모델 비교: LogisticRegression vs RandomForest (둘 다 class_weight="balanced")
+| model              |   accuracy |   precision |   recall |   f1_score |   roc_auc |
+|:-------------------|-----------:|------------:|---------:|-----------:|----------:|
+| LogisticRegression |   0.808543 |    0.567818 | 0.859694 |   0.683917 |  0.909364 |
+| RandomForest       |   0.83405  |    0.632035 | 0.744898 |   0.683841 |  0.897281 |
+- 선택 기준: LogisticRegression 선택. F1-score 차이(0.0001)가 기준(0.01) 미만이라, 해석 가능성이 더 좋은 LogisticRegression을 최종 모델로 선택했다.
+
+### 최종 모델(LogisticRegression) 평가 결과
+- Accuracy : 0.8085
+- Precision: 0.5678
+- Recall   : 0.8597
+- F1-score : 0.6839
+- ROC-AUC  : 0.9094
+
+### 민감 변수(sex) 그룹별 성능/양성 예측 비율 (참고 분석)
+| group   |    n |   accuracy |   f1_score |   positive_pred_ratio |
+|:--------|-----:|-----------:|-----------:|----------------------:|
+| Female  | 2130 |     0.915  |     0.6785 |                0.1451 |
+| Male    | 4378 |     0.7567 |     0.6848 |                0.4717 |
+- 이 결과는 참고용이며, 그룹별 차이가 있다는 사실만으로 모델이 차별적이라고 단정할 수 없다.
 
 ## 6. 주요 인사이트
 - 아래 내용은 이번 실행에서 나온 데이터 기반 결과이며, 인과관계로 확대 해석하지 않는다.
@@ -106,6 +130,7 @@
 
 ## 7. 생성 파일
 - 정제 데이터 CSV: data/processed/adult_cleaned.csv
-- 정적 차트 PNG: output/figures/income_distribution.png, output/figures/numeric_eda.png, output/figures/categorical_eda.png, output/figures/correlation_heatmap.png, output/figures/confusion_matrix.png
-- Plotly 인터랙티브 차트 HTML: output/interactive/adult_income_analysis.html
+- 정적 차트 PNG: output/figures/income_distribution.png, output/figures/numeric_eda.png, output/figures/hours_distribution.png, output/figures/categorical_eda.png, output/figures/correlation_heatmap.png, output/figures/confusion_matrix.png, output/figures/roc_curve.png
+- Plotly 인터랙티브 차트 HTML: output/interactive/adult_income_analysis.html, output/interactive/education_income_ratio.html, output/interactive/occupation_income_ratio.html
 - 학습된 모델 Pipeline: output/models/adult_income_pipeline.pkl
+- 모델 메타데이터(JSON): output/models/adult_income_pipeline.json

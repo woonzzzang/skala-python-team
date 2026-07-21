@@ -18,6 +18,7 @@ ETHICS_NOTE = """\
 def generate_markdown_report(context: dict[str, Any], report_path: Path) -> Path:
     """context에 담긴 실제 실행 결과 값을 이용해 report.md를 작성한다(하드코딩된 숫자 없음)."""
     data_info = context["data"]
+    load_perf = context["load_performance"]
     income_info = context["income"]
     t_test = context["t_test"]
     model_info = context["model"]
@@ -28,9 +29,28 @@ def generate_markdown_report(context: dict[str, Any], report_path: Path) -> Path
     )
     chi_square_lines = "\n".join(
         f"  - {test['row_column']} x {test['col_column']}: "
-        f"chi2={test['chi2']:.2f}, p-value={test['p_value']:.4f}, "
+        f"chi2={test['chi2']:.2f}, dof={test['dof']}, p-value={test['p_value']:.4f}, "
+        f"Cramér's V={test['cramers_v']:.3f}, "
         f"{'유의함' if test['is_significant'] else '유의하지 않음'}"
         for test in context.get("chi_square_tests", [])
+    )
+
+    def describe_t_test(test: dict) -> str:
+        conclusion = (
+            "귀무가설을 기각하며, 두 income 그룹의 평균에 통계적으로 유의한 차이가 있다."
+            if test["is_significant"]
+            else "귀무가설을 기각할 충분한 근거가 없으며, 통계적으로 유의한 차이를 확인하지 못했다."
+        )
+        return (
+            f"  - >50K: n={test['group_high_n']}, 평균={test['group_high_mean']:.2f} / "
+            f"<=50K: n={test['group_low_n']}, 평균={test['group_low_mean']:.2f} / "
+            f"평균 차이={test['mean_difference']:.2f}, t={test['t_statistic']:.4f}, "
+            f"p-value={test['p_value']:.6f}, Cohen's d={test['cohens_d']:.3f} -> {conclusion}"
+        )
+
+    t_test_results = context.get("t_test_results", {"hours-per-week": t_test})
+    t_test_lines = "\n".join(
+        f"- **{column}**\n{describe_t_test(test)}" for column, test in t_test_results.items()
     )
 
     t_test_conclusion = (
@@ -41,6 +61,10 @@ def generate_markdown_report(context: dict[str, Any], report_path: Path) -> Path
 
     numeric_summary_markdown = context["numeric_summary"].to_markdown()
     correlation_pairs_markdown = context["correlation_top_pairs"].to_markdown(index=False)
+    model_comparison_markdown = context["model_comparison"].to_markdown() if "model_comparison" in context else ""
+    sex_group_markdown = (
+        context["sex_group_performance"].to_markdown() if "sex_group_performance" in context else ""
+    )
 
     report_content = f"""# Adult Census Income 분석 보고서
 
@@ -57,6 +81,13 @@ def generate_markdown_report(context: dict[str, Any], report_path: Path) -> Path
 - 주요 결측 컬럼별 결측치 수:
 {missing_lines}
 - 처리 방법: {data_info['missing_strategy_summary']}
+
+### Pandas vs Polars 로드 성능 (1회 측정, 절대적 우열 판단 근거 아님)
+- 로드 시간: Pandas {load_perf['pandas_seconds']:.4f}초 / Polars {load_perf['polars_seconds']:.4f}초
+- 메모리 사용량: Pandas {load_perf['pandas_memory_mb']:.2f}MB / Polars {load_perf['polars_memory_mb']:.2f}MB
+- 측정 방법: 같은 프로세스 안에서 같은 원본 파일을 각각 새로 읽어 `time.perf_counter()`로 걸린 시간을,
+  Pandas는 `memory_usage(deep=True)`, Polars는 `estimated_size()`로 메모리 사용량을 측정했다.
+  OS 파일 캐시 영향이 있을 수 있어 1회 측정값만으로 두 라이브러리의 절대적 우열을 판단하지 않는다.
 
 ## 3. EDA 주요 결과
 
@@ -82,33 +113,38 @@ def generate_markdown_report(context: dict[str, Any], report_path: Path) -> Path
 - education과 education-num은 같은 학력 정보를 다른 형태로 표현하므로 서로 상관이 높을 수 있고,
   모델 feature로 함께 쓸 때 정보 중복에 유의해야 한다.
 
-### t-test: income 그룹별 hours-per-week
-- H0: 두 income 그룹의 평균 hours-per-week에는 차이가 없다.
-- H1: 두 income 그룹의 평균 hours-per-week에는 차이가 있다.
-- >50K 그룹: n={t_test['group_high_n']}, 평균={t_test['group_high_mean']:.2f}
-- <=50K 그룹: n={t_test['group_low_n']}, 평균={t_test['group_low_mean']:.2f}
-- t 통계량: {t_test['t_statistic']:.4f}
-- p-value: {t_test['p_value']:.6f}
-- Cohen's d: {t_test['cohens_d']:.3f}
-- 결론: {t_test_conclusion}
+### t-test: income 그룹별 평균 차이 (hours-per-week / age / education-num)
+- H0: 두 income 그룹의 평균에는 차이가 없다. H1: 차이가 있다. (Welch t-test, 양측검정, alpha=0.05)
+{t_test_lines}
 - 주의: 표본 수가 크면 작은 차이도 매우 작은 p-value로 나타날 수 있어, 통계적 유의성과
   실질적 효과 크기(Cohen's d)를 함께 고려해야 한다.
 
-### 카이제곱 독립성 검정 (선택적 추가 분석)
+### 카이제곱 독립성 검정 (education/occupation/workclass/sex x income)
 {chi_square_lines if chi_square_lines else '  - 수행하지 않음'}
 
 ## 5. 모델링
 - 사용한 feature: 수치형 {model_info['numeric_features']}, 범주형 {model_info['categorical_features']}
-- target: income (feature에서는 제외하여 데이터 누수를 방지)
+- 모델 feature에서 제외한 컬럼: {model_info['excluded_columns']}
+  (fnlwgt는 개인 속성이 아닌 표본가중치라서 제외, education은 education-num과 정보가 중복되어 제외)
+- target: income (feature에서는 제외해 데이터 누수 방지, y는 <=50K=0, >50K=1로 매핑해 학습/평가)
 - 전처리: SimpleImputer + StandardScaler(수치형), SimpleImputer + OneHotEncoder(범주형)를
   ColumnTransformer로 연결하고, sklearn Pipeline 내부에서 train 데이터로만 학습
-- 사용 모델: LogisticRegression(class_weight="balanced")
 - train/test 분할: test_size=0.2, stratify=income, random_state=42
+
+### 모델 비교: LogisticRegression vs RandomForest (둘 다 class_weight="balanced")
+{model_comparison_markdown}
+- 선택 기준: {model_info['model_name']} 선택. {context.get('model_selection_reason', '')}
+
+### 최종 모델({model_info['model_name']}) 평가 결과
 - Accuracy : {model_info['accuracy']:.4f}
 - Precision: {model_info['precision']:.4f}
 - Recall   : {model_info['recall']:.4f}
 - F1-score : {model_info['f1_score']:.4f}
 - ROC-AUC  : {model_info['roc_auc']:.4f}
+
+### 민감 변수(sex) 그룹별 성능/양성 예측 비율 (참고 분석)
+{sex_group_markdown}
+- 이 결과는 참고용이며, 그룹별 차이가 있다는 사실만으로 모델이 차별적이라고 단정할 수 없다.
 
 ## 6. 주요 인사이트
 - 아래 내용은 이번 실행에서 나온 데이터 기반 결과이며, 인과관계로 확대 해석하지 않는다.
@@ -123,10 +159,12 @@ def generate_markdown_report(context: dict[str, Any], report_path: Path) -> Path
 ## 7. 생성 파일
 - 정제 데이터 CSV: {output_files['cleaned_csv']}
 - 정적 차트 PNG: {output_files['income_distribution_png']}, {output_files['numeric_eda_png']}, \
-{output_files['categorical_eda_png']}, {output_files['correlation_heatmap_png']}, \
-{output_files['confusion_matrix_png']}
-- Plotly 인터랙티브 차트 HTML: {output_files['plotly_html']}
+{output_files['hours_distribution_png']}, {output_files['categorical_eda_png']}, \
+{output_files['correlation_heatmap_png']}, {output_files['confusion_matrix_png']}, {output_files['roc_curve_png']}
+- Plotly 인터랙티브 차트 HTML: {output_files['plotly_html']}, {output_files['plotly_education_html']}, \
+{output_files['plotly_occupation_html']}
 - 학습된 모델 Pipeline: {output_files['model_pkl']}
+- 모델 메타데이터(JSON): {output_files['model_metadata_json']}
 """
 
     report_path.parent.mkdir(parents=True, exist_ok=True)

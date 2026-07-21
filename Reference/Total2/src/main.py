@@ -49,6 +49,14 @@ CATEGORICAL_FEATURES = [
 ]
 KEY_MISSING_COLUMNS = ["workclass", "occupation", "native-country"]
 TARGET_COLUMN = "income"
+TARGET_MAPPING = {"<=50K": 0, ">50K": 1}
+
+# 모델 feature 목록: EDA에는 fnlwgt/education을 그대로 쓰지만, 모델 feature에서는 제외한다.
+# - fnlwgt: 개인 속성이 아니라 표본 가중치(census weight)라서 일반 예측 feature로 부적합해 제외
+# - education: education-num과 같은 학력 정보를 중복 제공하므로, 모델에는 education-num만 사용
+MODEL_NUMERIC_FEATURES = [col for col in NUMERIC_FEATURES if col != "fnlwgt"]
+MODEL_CATEGORICAL_FEATURES = [col for col in CATEGORICAL_FEATURES if col != "education"]
+EXCLUDED_MODEL_COLUMNS = ["fnlwgt", "education"]
 
 
 def configure_paths(project_root: Path) -> dict[str, Path]:
@@ -96,6 +104,7 @@ def main() -> None:
         pandas_df = data_loader.load_with_pandas(raw_path, COLUMNS)
         polars_df = data_loader.load_with_polars(raw_path, COLUMNS, NUMERIC_FEATURES)
         data_loader.compare_pandas_polars(pandas_df, polars_df, TARGET_COLUMN)
+        load_performance = data_loader.compare_load_performance(raw_path, COLUMNS, NUMERIC_FEATURES)
 
         # 3. 기본 점검, 결측치 처리 방법론 설명, 정제
         preprocessing.inspect_data(pandas_df, KEY_MISSING_COLUMNS)
@@ -108,7 +117,8 @@ def main() -> None:
 
         # 4. 자료형별 EDA (수치형 / 범주형 / 타깃)
         numeric_summary = eda.perform_numeric_eda(cleaned_df, NUMERIC_FEATURES)
-        eda.perform_categorical_eda(cleaned_df, CATEGORICAL_FEATURES + [TARGET_COLUMN])
+        income_numeric_summary = eda.summarize_numeric_by_income(cleaned_df, NUMERIC_FEATURES, TARGET_COLUMN)
+        eda.perform_categorical_eda(cleaned_df, CATEGORICAL_FEATURES + [TARGET_COLUMN], income_column=TARGET_COLUMN)
         income_distribution = eda.analyze_income_distribution(cleaned_df, TARGET_COLUMN)
 
         # 5. 정적 시각화 (Seaborn/Matplotlib)
@@ -117,6 +127,9 @@ def main() -> None:
             cleaned_df, paths["figures_dir"] / "income_distribution.png"
         )
         numeric_png = visualization.create_numeric_eda_plot(cleaned_df, paths["figures_dir"] / "numeric_eda.png")
+        hours_dist_png = visualization.create_hours_distribution_plot(
+            cleaned_df, paths["figures_dir"] / "hours_distribution.png"
+        )
         categorical_png = visualization.create_categorical_eda_plot(
             cleaned_df, paths["figures_dir"] / "categorical_eda.png"
         )
@@ -129,12 +142,19 @@ def main() -> None:
         correlation_png = visualization.create_correlation_heatmap(
             correlation_matrix, paths["figures_dir"] / "correlation_heatmap.png"
         )
-        t_test_result = stats_analysis.perform_t_test(cleaned_df)
+        # t-test 필수 3주제: income 그룹별 hours-per-week / age / education-num 평균 차이
+        t_test_results = {
+            "hours-per-week": stats_analysis.perform_t_test(cleaned_df, value_column="hours-per-week"),
+            "age": stats_analysis.perform_t_test(cleaned_df, value_column="age"),
+            "education-num": stats_analysis.perform_t_test(cleaned_df, value_column="education-num"),
+        }
+        t_test_result = t_test_results["hours-per-week"]  # report.py 하위 호환을 위한 대표값
 
-        # 선택적 추가 분석: 카이제곱 독립성 검정 (t-test는 필수, 이건 완성도를 위한 추가 분석)
+        # 카이제곱 독립성 검정: education/occupation/workclass/sex x income
         chi_square_results = [
             stats_analysis.perform_chi_square_test(cleaned_df, "education", TARGET_COLUMN),
             stats_analysis.perform_chi_square_test(cleaned_df, "occupation", TARGET_COLUMN),
+            stats_analysis.perform_chi_square_test(cleaned_df, "workclass", TARGET_COLUMN),
             stats_analysis.perform_chi_square_test(cleaned_df, "sex", TARGET_COLUMN),
         ]
 
@@ -142,24 +162,60 @@ def main() -> None:
         plotly_html_path = visualization.create_plotly_visualization(
             cleaned_df, paths["interactive_dir"] / "adult_income_analysis.html"
         )
+        plotly_education_path = visualization.create_plotly_income_ratio_bar(
+            cleaned_df, "education", paths["interactive_dir"] / "education_income_ratio.html"
+        )
+        plotly_occupation_path = visualization.create_plotly_income_ratio_bar(
+            cleaned_df, "occupation", paths["interactive_dir"] / "occupation_income_ratio.html"
+        )
 
-        # 8. sklearn Pipeline 학습 및 평가 (income은 feature에서 제외해 데이터 누수 방지)
-        feature_columns = NUMERIC_FEATURES + CATEGORICAL_FEATURES
-        X = cleaned_df[feature_columns]
-        y = cleaned_df[TARGET_COLUMN]
+        # 8. sklearn Pipeline 학습 및 평가
+        # income은 feature에서 제외해 데이터 누수 방지, y는 모델 학습/평가용으로만 0/1 매핑(EDA는 문자열 유지)
+        # fnlwgt(표본가중치)와 education(education-num과 정보 중복)은 모델 feature에서 제외
+        X = cleaned_df[MODEL_NUMERIC_FEATURES + MODEL_CATEGORICAL_FEATURES]
+        y = cleaned_df[TARGET_COLUMN].map(TARGET_MAPPING)
 
-        ml_pipeline = modeling.build_ml_pipeline(NUMERIC_FEATURES, CATEGORICAL_FEATURES)
-        model_result = modeling.train_and_evaluate_model(ml_pipeline, X, y)
+        comparison_result = modeling.compare_classifiers(MODEL_NUMERIC_FEATURES, MODEL_CATEGORICAL_FEATURES, X, y)
+        model_result = comparison_result["final"]
 
         confusion_png = visualization.create_confusion_matrix_plot(
             model_result["confusion_matrix"],
             model_result["confusion_matrix_labels"],
             paths["figures_dir"] / "confusion_matrix.png",
         )
+        roc_png = visualization.create_roc_curve_plot(
+            model_result["y_test"],
+            model_result["y_proba"],
+            model_result["roc_auc"],
+            paths["figures_dir"] / "roc_curve.png",
+        )
 
-        # 9. 모델 저장 및 재로딩 검증
+        # 민감 변수(sex) 그룹별 예측 성능/양성 예측 비율 참고 분석 (공정성 라이브러리 없이 최소 분석)
+        sex_group_performance = modeling.analyze_group_performance(
+            model_result["pipeline"], model_result["X_test"], model_result["y_test"], group_column="sex"
+        )
+
+        # 9. 모델 저장 및 재로딩 검증 (feature 목록/제외 컬럼/타깃 매핑/설정을 메타데이터로 함께 저장)
+        classifier = model_result["pipeline"].named_steps["classifier"]
         model_path = paths["models_dir"] / "adult_income_pipeline.pkl"
-        modeling.save_and_verify_model(model_result["pipeline"], model_result["X_test"], model_path)
+        model_metadata = {
+            "model_name": model_result["model_name"],
+            "input_features": {
+                "numeric": MODEL_NUMERIC_FEATURES,
+                "categorical": MODEL_CATEGORICAL_FEATURES,
+            },
+            "excluded_columns": EXCLUDED_MODEL_COLUMNS,
+            "target_mapping": TARGET_MAPPING,
+            "model_params": {
+                key: value
+                for key, value in classifier.get_params().items()
+                if isinstance(value, (str, int, float, bool)) or value is None
+            },
+            "selection_reason": comparison_result["selection_reason"],
+        }
+        modeling.save_and_verify_model(
+            model_result["pipeline"], model_result["X_test"], model_path, metadata=model_metadata
+        )
 
         # 10. report.md 자동 생성 (아래 context의 모든 값은 위에서 실제로 계산된 결과)
         correlation_top_pairs = stats_analysis.get_top_correlation_pairs(correlation_matrix, top_n=3)
@@ -175,14 +231,21 @@ def main() -> None:
                 },
                 "missing_strategy_summary": missing_strategy_summary,
             },
+            "load_performance": load_performance,
             "income": income_distribution,
             "numeric_summary": numeric_summary,
             "correlation_top_pairs": correlation_top_pairs,
             "t_test": t_test_result,
+            "t_test_results": t_test_results,
             "chi_square_tests": chi_square_results,
+            "model_comparison": comparison_result["comparison_table"],
+            "model_selection_reason": comparison_result["selection_reason"],
+            "sex_group_performance": sex_group_performance,
             "model": {
-                "numeric_features": NUMERIC_FEATURES,
-                "categorical_features": CATEGORICAL_FEATURES,
+                "numeric_features": MODEL_NUMERIC_FEATURES,
+                "categorical_features": MODEL_CATEGORICAL_FEATURES,
+                "excluded_columns": EXCLUDED_MODEL_COLUMNS,
+                "model_name": model_result["model_name"],
                 "accuracy": model_result["accuracy"],
                 "precision": model_result["precision"],
                 "recall": model_result["recall"],
@@ -193,11 +256,16 @@ def main() -> None:
                 "cleaned_csv": cleaned_csv_path.relative_to(project_root),
                 "income_distribution_png": income_png.relative_to(project_root),
                 "numeric_eda_png": numeric_png.relative_to(project_root),
+                "hours_distribution_png": hours_dist_png.relative_to(project_root),
                 "categorical_eda_png": categorical_png.relative_to(project_root),
                 "correlation_heatmap_png": correlation_png.relative_to(project_root),
                 "confusion_matrix_png": confusion_png.relative_to(project_root),
+                "roc_curve_png": roc_png.relative_to(project_root),
                 "plotly_html": plotly_html_path.relative_to(project_root),
+                "plotly_education_html": plotly_education_path.relative_to(project_root),
+                "plotly_occupation_html": plotly_occupation_path.relative_to(project_root),
                 "model_pkl": model_path.relative_to(project_root),
+                "model_metadata_json": model_path.with_suffix(".json").relative_to(project_root),
             },
         }
         generate_markdown_report(context, paths["report_path"])
