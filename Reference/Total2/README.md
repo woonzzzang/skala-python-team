@@ -41,14 +41,17 @@ UCI Adult Census Income 데이터셋을 이용해 데이터 수집부터 정제,
 ```
 Total2/
 ├── data/
+│   ├── README.md                   # data/ 폴더 설명(raw/processed 구분, 정제 범위)
 │   ├── raw/adult.data              # 원본 CSV (다운로드 또는 로컬 파일)
 │   └── processed/adult_cleaned.csv # 정제된 데이터
 ├── output/
-│   ├── figures/        # 정적 차트 PNG 5종
-│   ├── interactive/    # Plotly 인터랙티브 차트 HTML
-│   ├── models/         # 학습된 sklearn Pipeline (.pkl)
+│   ├── README.md       # output/ 폴더 설명(파일별 내용)
+│   ├── figures/        # 정적 차트 PNG 7종
+│   ├── interactive/    # Plotly 인터랙티브 차트 HTML 3종
+│   ├── models/         # 학습된 sklearn Pipeline (.pkl) + 메타데이터(.json)
 │   └── report.md       # 자동 생성 분석 보고서
 ├── src/
+│   ├── README.md           # src/ 모듈별 역할 설명
 │   ├── __init__.py
 │   ├── data_loader.py     # 다운로드/로드, Pandas·Polars 비교
 │   ├── preprocessing.py   # 점검, 결측치 방법론, 정제
@@ -62,6 +65,8 @@ Total2/
 ├── README.md
 └── .gitignore
 ```
+
+> `data/`, `output/`, `src/` 폴더에는 각각 더 자세한 내용을 담은 `README.md`가 따로 있습니다.
 
 > 참고: 원래 계획한 폴더 구조에서는 통계 모듈 이름이 `statistics.py`였지만,
 > 이 프로젝트는 `python src/main.py`처럼 스크립트를 직접 실행하기 때문에
@@ -104,42 +109,59 @@ python src/main.py
 
 ## 분석 과정
 1. 데이터 다운로드 또는 로컬 파일 로드
-2. Pandas / Polars로 각각 로드 후 행/열 수, 결측치, income 분포, 중복 제거 결과 비교
+2. Pandas / Polars로 각각 로드 후 행/열 수, 결측치, income 분포, 중복 제거 결과 비교 + 로드 시간·메모리 사용량 비교
 3. 기본 점검(shape/info/결측치/중복) + 결측치 처리 방법론 설명 + 형식 정제(공백 제거, income 정규화, 중복 제거)
-4. 수치형/범주형/타깃(income) EDA
-5. Seaborn/Matplotlib 정적 시각화 5종 PNG 저장
-6. Pearson 상관분석 + 상관관계 히트맵
-7. t-test(income별 hours-per-week) + 카이제곱 독립성 검정(선택 추가 분석)
-8. Plotly 인터랙티브 산점도 HTML 저장
-9. sklearn Pipeline(전처리+LogisticRegression) 학습 및 평가, confusion matrix 시각화
-10. joblib으로 Pipeline 저장 및 재로딩 검증
-11. report.md 자동 생성
+4. 수치형(IQR·이상치 후보 수·income 그룹별 평균/중앙값 포함)/범주형(범주별 >50K 인원수·비율 포함)/타깃(income) EDA
+5. Seaborn/Matplotlib 정적 시각화 7종 PNG 저장
+6. Pearson(+참고용 Spearman) 상관분석 + 상관관계 히트맵
+7. t-test(income별 hours-per-week/age/education-num) + 카이제곱 독립성 검정(education/occupation/workclass/sex, Cramér's V 포함)
+8. Plotly 인터랙티브 차트 3종(산점도, 교육수준별/직업별 고소득 비율) HTML 저장
+9. sklearn Pipeline(전처리+분류기) 학습 — LogisticRegression vs RandomForest(둘 다 class_weight="balanced") 비교 후
+   F1-score 기준(0.01 이내 동률이면 해석 가능성 우선)으로 최종 모델 선택, confusion matrix·ROC curve 시각화
+10. sex 그룹별 예측 성능/양성 예측 비율 참고 분석
+11. joblib으로 Pipeline 저장(입력 feature·제외 컬럼·타깃 매핑·모델 설정을 JSON 메타데이터로 함께 저장) 및 재로딩 검증
+12. report.md 자동 생성
 
 ## 생성 결과물
 - `data/processed/adult_cleaned.csv`
 - `output/figures/income_distribution.png`
 - `output/figures/numeric_eda.png`
+- `output/figures/hours_distribution.png`
 - `output/figures/categorical_eda.png`
 - `output/figures/correlation_heatmap.png`
 - `output/figures/confusion_matrix.png`
+- `output/figures/roc_curve.png`
 - `output/interactive/adult_income_analysis.html`
+- `output/interactive/education_income_ratio.html`
+- `output/interactive/occupation_income_ratio.html`
 - `output/models/adult_income_pipeline.pkl`
+- `output/models/adult_income_pipeline.json` (feature 목록/제외 컬럼/타깃 매핑/모델 설정/저장 시각)
 - `output/report.md`
+
+## 모델 feature 관련 결정
+- **fnlwgt**: 개인 속성이 아니라 표본 가중치(census weight)라서 모델 feature에서 제외했습니다. EDA/시각화/상관분석에는 그대로 사용합니다.
+- **education vs education-num**: 같은 학력 정보가 중복되므로 모델에는 `education-num`만 사용하고, `education`은 EDA·시각화·해석용으로만 사용합니다.
+- **income 타깃**: EDA에서는 `<=50K`/`>50K` 문자열을 그대로 쓰고, 모델 학습·평가용 y만 `{"<=50K": 0, ">50K": 1}`로 매핑합니다.
 
 ## 주요 분석 결과
 - 전체 32,561행 중 완전 중복 24행을 제거해 32,537행을 사용했습니다.
 - 결측치는 workclass(5.6%), occupation(5.7%), native-country(1.8%) 세 범주형 컬럼에만 있습니다.
 - income은 `<=50K` 75.9% vs `>50K` 24.1%로 불균형합니다(약 3.15배).
-- income 그룹별 hours-per-week 평균 차이는 통계적으로 유의했습니다(Welch t-test, p < 0.001).
-- education, occupation, sex는 모두 income과 통계적으로 유의한 연관성이 있었습니다(카이제곱 검정).
+- income 그룹별 hours-per-week/age/education-num 평균 차이는 모두 통계적으로 유의했습니다(Welch t-test, p < 0.001).
+- education, occupation, workclass, sex는 모두 income과 통계적으로 유의한 연관성이 있었습니다(카이제곱 검정, Cramér's V로 연관성 크기도 함께 확인).
 
 ## 모델 평가
-- 모델: `LogisticRegression(class_weight="balanced")` + `ColumnTransformer` 전처리를 하나의
-  `Pipeline`으로 연결
-- Accuracy 0.809 / Precision 0.568 / Recall 0.861 / F1-score 0.685 / ROC-AUC 0.910 (>50K 기준)
+- `LogisticRegression(class_weight="balanced")`과 `RandomForestClassifier(class_weight="balanced")`를
+  같은 `ColumnTransformer` 전처리 Pipeline으로 비교하고, `>50K` 클래스의 F1-score 기준(차이 0.01 미만이면
+  해석 가능성이 좋은 LogisticRegression 우선)으로 최종 모델을 선택합니다.
+- 실제 값은 실행할 때마다 달라질 수 있으며(특히 RandomForest), 최신 실제 수치는 `output/report.md`에
+  자동으로 기록됩니다. 최근 실행 예: LogisticRegression Accuracy 0.809 / Precision 0.568 / Recall 0.860 /
+  F1-score 0.684 / ROC-AUC 0.909, RandomForest Accuracy 0.834 / Precision 0.632 / Recall 0.745 /
+  F1-score 0.684 / ROC-AUC 0.897 — F1 차이가 0.01 미만이라 LogisticRegression이 최종 모델로 선택되었습니다.
 - income 클래스가 불균형하기 때문에 Accuracy만으로 성능을 판단하면 안 되며,
-  Precision/Recall/F1-score를 함께 봐야 합니다. 실제 값은 실행할 때마다
-  `output/report.md`에 다시 자동으로 기록됩니다.
+  Precision/Recall/F1-score/ROC-AUC를 함께 봐야 합니다.
+- sex 그룹별 예측 성능과 양성(>50K) 예측 비율도 참고용으로 함께 확인합니다(공정성 문제를 판단하는
+  별도 라이브러리 없이, 그룹별 accuracy/F1/양성 예측 비율만 비교).
 
 ## 결측치 처리 방법
 - 수치형 컬럼: 이상치의 영향을 덜 받는 **중앙값(median)**으로 대체

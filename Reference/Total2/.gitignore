@@ -9,5 +9,6 @@ __pycache__/
 data/raw/
 data/processed/
 
-# 학습된 모델 파일도 코드 실행으로 재생성 가능하므로 기본적으로 제외한다.
+# 학습된 모델 파일과 메타데이터도 코드 실행으로 재생성 가능하므로 기본적으로 제외한다.
 output/models/*.pkl
+output/models/*.json

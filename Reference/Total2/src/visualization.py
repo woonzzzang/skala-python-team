@@ -148,6 +148,44 @@ def create_correlation_heatmap(correlation_matrix: pd.DataFrame, output_path: Pa
     return output_path
 
 
+def create_hours_distribution_plot(df: pd.DataFrame, output_path: Path) -> Path:
+    """hours-per-week 전체 분포(히스토그램)를 별도로 저장한다(박스플롯과는 다른 관점)."""
+    fig, ax = plt.subplots(figsize=(7, 5))
+    sns.histplot(df["hours-per-week"], kde=True, ax=ax)
+    ax.set_title("주당 근무시간(hours-per-week) 분포")
+    ax.set_xlabel("hours-per-week")
+    ax.set_ylabel("빈도")
+
+    plt.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=150)
+    plt.close(fig)
+    print(f"저장 완료: {output_path}")
+    return output_path
+
+
+def create_roc_curve_plot(y_true: np.ndarray, y_proba: np.ndarray, roc_auc: float, output_path: Path) -> Path:
+    """>50K를 양성 클래스로 하는 ROC curve를 그리고 저장한다."""
+    from sklearn.metrics import roc_curve
+
+    false_positive_rate, true_positive_rate, _ = roc_curve(y_true, y_proba)
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.plot(false_positive_rate, true_positive_rate, label=f"ROC curve (AUC = {roc_auc:.3f})")
+    ax.plot([0, 1], [0, 1], linestyle="--", color="gray", label="무작위 추측")
+    ax.set_xlabel("False Positive Rate")
+    ax.set_ylabel("True Positive Rate")
+    ax.set_title("ROC Curve (양성 클래스: >50K)")
+    ax.legend(loc="lower right")
+
+    plt.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_path, dpi=150)
+    plt.close(fig)
+    print(f"저장 완료: {output_path}")
+    return output_path
+
+
 def create_confusion_matrix_plot(
     confusion_matrix_values: np.ndarray, class_labels: list[str], output_path: Path
 ) -> Path:
@@ -210,5 +248,37 @@ def create_plotly_visualization(df: pd.DataFrame, output_path: Path, sample_size
         fig.show()
     except Exception as error:
         print("Plotly 화면 출력 중 문제가 발생했습니다(HTML 파일 저장은 완료됨):", error)
+
+    return output_path
+
+
+def create_plotly_income_ratio_bar(
+    df: pd.DataFrame, column: str, output_path: Path, top_n: int = 10, title: str | None = None
+) -> Path:
+    """column별 >50K 비율을 Plotly 막대 그래프로 그려 HTML로 저장한다(education/occupation 등에 재사용)."""
+    series = df[column]
+    if series.nunique() > top_n:
+        series = top_n_with_other(series, n=top_n)
+
+    ratio_table = (
+        pd.crosstab(series, df["income"], normalize="index")[">50K"]
+        .sort_values(ascending=False)
+        .reset_index()
+    )
+    ratio_table.columns = [column, ">50K_비율"]
+
+    fig = px.bar(
+        ratio_table,
+        x=column,
+        y=">50K_비율",
+        title=title or f"{column}별 고소득(>50K) 비율",
+        labels={">50K_비율": ">50K 비율"},
+    )
+    fig.update_yaxes(tickformat=".0%")
+    fig.update_layout(xaxis_tickangle=-45)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.write_html(str(output_path))
+    print(f"Plotly 인터랙티브 차트 HTML 저장 완료: {output_path}")
 
     return output_path

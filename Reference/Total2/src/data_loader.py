@@ -1,5 +1,6 @@
 """Adult 데이터셋을 다운로드/로드하고 Pandas와 Polars 결과를 비교하는 모듈."""
 
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -120,3 +121,31 @@ def compare_pandas_polars(pandas_df: pd.DataFrame, polars_df: pl.DataFrame, inco
     polars_dedup_rows = polars_df.unique().shape[0]
     flag = "일치" if pandas_dedup_rows == polars_dedup_rows else "불일치"
     print(f"Pandas={pandas_dedup_rows}, Polars={polars_dedup_rows} ({flag})")
+
+
+def compare_load_performance(raw_path: Path, columns: list[str], numeric_columns: list[str]) -> dict:
+    """
+    Pandas와 Polars로 같은 파일을 각각 새로 읽어 로드 시간과 메모리 사용량을 1회 측정해 비교한다.
+    주의: 같은 프로세스 내 1회 측정값이며(OS 파일 캐시 영향 가능), 이 결과만으로
+    두 라이브러리의 절대적 우열을 단정하지 않는다.
+    """
+    start = time.perf_counter()
+    pandas_df = load_with_pandas(raw_path, columns)
+    pandas_seconds = time.perf_counter() - start
+    pandas_memory_mb = pandas_df.memory_usage(deep=True).sum() / (1024**2)
+
+    start = time.perf_counter()
+    polars_df = load_with_polars(raw_path, columns, numeric_columns)
+    polars_seconds = time.perf_counter() - start
+    polars_memory_mb = polars_df.estimated_size() / (1024**2)
+
+    print("\n[Pandas vs Polars 실행시간·메모리 비교] (1회 측정, 절대적 우열 판단 근거 아님)")
+    print(f"로드 시간   - Pandas: {pandas_seconds:.4f}초 / Polars: {polars_seconds:.4f}초")
+    print(f"메모리 사용량 - Pandas: {pandas_memory_mb:.2f}MB / Polars: {polars_memory_mb:.2f}MB")
+
+    return {
+        "pandas_seconds": float(pandas_seconds),
+        "polars_seconds": float(polars_seconds),
+        "pandas_memory_mb": float(pandas_memory_mb),
+        "polars_memory_mb": float(polars_memory_mb),
+    }
